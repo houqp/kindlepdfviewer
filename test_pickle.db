@@ -1,0 +1,28 @@
+return {
+	["zoom"] = 1.5,
+	["last_page"] = 15,
+	["jump_stack"] = {
+		[1] = {
+			["page"] = 1,
+			["notes"] = "page 1",
+		},
+		[2] = {
+			["page"] = 2,
+			["notes"] = "page 2",
+		},
+		[3] = {
+			["page"] = 20,
+			["notes"] = "page 20",
+		},
+		[4] = {
+			["page"] = 3,
+			["notes"] = "page 3",
+		},
+		[5] = {
+			["page"] = 30,
+			["notes"] = "page 30",
+		},
+	},
+	["rotate"] = 10,
+	["gamma"] = 1,
+}
