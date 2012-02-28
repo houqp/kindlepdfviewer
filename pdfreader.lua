@@ -87,11 +87,13 @@ function PDFReader:cacheclaim(size)
 	return true
 end
 
+-- setzoom and cache
 function PDFReader:draworcache(no, zoom, offset_x, offset_y, width, height, gamma, rotate)
 	-- hash draw state
 	local hash = self:cachehash(no, zoom, offset_x, offset_y, width, height, gamma, rotate)
 	if self.cache[hash] == nil then
 		-- not in cache, so prepare cache slot...
+		print(" @ caching "..hash)
 		self:cacheclaim(width * height / 2);
 		self.cache[hash] = {
 			ttl = self.cache_max_ttl,
@@ -154,16 +156,21 @@ function PDFReader:setzoom(page)
 		end
 	elseif self.globalzoommode == self.ZOOM_FIT_TO_PAGE_WIDTH
 	or self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_WIDTH then
+		-- ignore height
 		self.globalzoom = width / pwidth
 		self.offset_x = 0
 		self.offset_y = (height - (self.globalzoom * pheight)) / 2
 	elseif self.globalzoommode == self.ZOOM_FIT_TO_PAGE_HEIGHT
 	or self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
+		-- ignore weight
 		self.globalzoom = height / pheight
 		self.offset_x = (width - (self.globalzoom * pwidth)) / 2
 		self.offset_y = 0
 	end
 	if self.globalzoommode == self.ZOOM_FIT_TO_CONTENT then
+		--print("page width:"..pwidth..", page height:"..pheight)
+		--print("height: "..height..", width: "..width)
+		--print("globalzoom: "..self.globalzoom)
 		local x0, y0, x1, y1 = page:getUsedBBox()
 		if (x1 - x0) < pwidth then
 			self.globalzoom = width / (x1 - x0)
@@ -179,16 +186,20 @@ function PDFReader:setzoom(page)
 		local x0, y0, x1, y1 = page:getUsedBBox()
 		if (x1 - x0) < pwidth then
 			self.globalzoom = width / (x1 - x0)
-			self.offset_x = -1 * x0 * self.globalzoom
-			self.offset_y = -1 * y0 * self.globalzoom + (height - (self.globalzoom * (y1 - y0))) / 2
+			--self.offset_x = -1 * x0 * self.globalzoom
+			--self.offset_y = -1 * y0 * self.globalzoom + (height - (self.globalzoom * (y1 - y0))) / 2
+			self.offset_x = 0
+			self.offset_y = 0
 		end
 	elseif self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
 		local x0, y0, x1, y1 = page:getUsedBBox()
 		if (y1 - y0) < pheight then
 			self.globalzoom = height / (y1 - y0)
-			self.offset_x = -1 * x0 * self.globalzoom + (width - (self.globalzoom * (x1 - x0))) / 2
-			self.offset_y = -1 * y0 * self.globalzoom
+			--self.offset_x = -1 * x0 * self.globalzoom + (width - (self.globalzoom * (x1 - x0))) / 2
+			--self.offset_y = -1 * y0 * self.globalzoom
 		end
+		self.offset_x = 0
+		self.offset_y = 0
 	end
 	dc:setZoom(self.globalzoom)
 	dc:setRotate(self.globalrotate);
@@ -211,15 +222,7 @@ function PDFReader:setzoom(page)
 	return dc
 end
 
--- render and blit a page
-function PDFReader:show(no)
-	local slot
-	if self.globalzoommode ~= self.ZOOM_BY_VALUE then
-		slot = self:draworcache(no,self.globalzoommode,self.offset_x,self.offset_y,width,height,self.globalgamma,self.globalrotate)
-	else
-		slot = self:draworcache(no,self.globalzoom,self.offset_x,self.offset_y,width,height,self.globalgamma,self.globalrotate)
-	end
-	fb.bb:blitFullFrom(self.cache[slot].bb)
+function PDFReader:refreshScreen()
 	if self.rcount == self.rcountmax then
 		print("full refresh")
 		self.rcount = 1
@@ -229,16 +232,68 @@ function PDFReader:show(no)
 		self.rcount = self.rcount + 1
 		fb:refresh(1)
 	end
+end
+
+-- render and blit a page
+function PDFReader:show(no)
+	local slot
+	if self.globalzoommode ~= self.ZOOM_BY_VALUE then
+		slot = self:draworcache(no,self.globalzoommode,self.offset_x,self.offset_y,width,height,self.globalgamma,self.globalrotate)
+	else
+		slot = self:draworcache(no,self.globalzoom,self.offset_x,self.offset_y,width,height,self.globalgamma,self.globalrotate)
+	end
+	fb.bb:blitFullFrom(self.cache[slot].bb)
+	self:refreshScreen()
 	self.slot_visible = slot;
 end
 
--- change current page and cache next page after rendering
-function PDFReader:goto(no)
+--[[
+1. set up draw context according to current page settings
+2. draw the dc to screen and refresh it.
+
+note: min_offset_x and min_offset_y should be already set 
+before calling this function
+--]]
+function PDFReader:_showCurrentView()
+	-- cache view with current view setting
+	local hash = self:cachehash(self.pageno, self.globalzoom, self.offset_x, self.offset_y, 
+								width, height, self.globalgamma, self.globalrotate)
+	if self.cache[hash] == nil then
+		-- not in cache, so prepare cache slot...
+		print(" @ caching "..hash)
+		self:cacheclaim(width * height / 2);
+		self.cache[hash] = {
+			ttl = self.cache_max_ttl,
+			size = width * height / 2,
+			bb = Blitbuffer.new(width, height)
+		}
+		-- and draw the page
+		local page = self.doc:openPage(self.pageno)
+
+		local dc = pdf.newDC()
+		local pwidth, pheight = page:getSize(self.nulldc)
+		dc:setZoom(self.globalzoom)
+		dc:setRotate(self.globalrotate);
+		dc:setOffset(self.offset_x, self.offset_y)
+		self.fullwidth, self.fullheight = page:getSize(dc)
+		-- min_offset_x and min_offset_y already set before calling this function?
+		page:draw(dc, self.cache[hash].bb, 0, 0)
+		page:close()
+	end
+
+	-- refresh screen
+	fb.bb:blitFullFrom(self.cache[hash].bb)
+	self:refreshScreen()
+	self.slot_visible = hash;
+end
+
+function PDFReader:setCurrentPage(no)
 	if no < 1 or no > self.doc:getPages() then
 		return
 	end
 
-	-- for jump_stack
+	-- for jump_stack, refer to:
+	-- http://www.mobileread.com/forums/showpost.php?p=1980689&postcount=79
 	if self.pageno and math.abs(self.pageno - no) > 1 then
 		local jump_item = nil
 		-- add current page to jump_stack if no in
@@ -267,6 +322,11 @@ function PDFReader:goto(no)
 	end
 
 	self.pageno = no
+end
+
+-- change current page and cache next page after rendering
+function PDFReader:goto(no)
+	self:setCurrentPage(no)
 	self:show(no)
 	if no < self.doc:getPages() then
 		if self.globalzoommode ~= self.ZOOM_BY_VALUE then
@@ -275,6 +335,73 @@ function PDFReader:goto(no)
 		else
 			self:draworcache(no,self.globalzoom,self.offset_x,self.offset_y,width,height,self.globalgamma,self.globalrotate)
 		end
+	end
+end
+
+function PDFReader:nextView()
+	-- check to change with offset or trun page
+	if (self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT and 
+		self.offset_x <= self.min_offset_x) or 
+		(self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_WIDTH and
+		self.offset_y <= self.min_offset_y) then
+
+		self:goto(self.pageno + 1)
+	else -- change offset to display next part of the document
+		print(" ! from offset_x "..self.offset_x.." to "..(self.offset_x - fb.bb:getWidth()).."/"..self.min_offset_x)
+		print(" ! from offset_y "..self.offset_y.." to "..(self.offset_y - fb.bb:getHeight()).."/"..self.min_offset_y)
+		--local cur_screen_width = fb.bb:getWidth()
+		--local cur_screen_height = fb.bb:getHeight()
+		if self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
+			--@TODO check fb.bb:getWidth in landscape mode  28.02 2012
+			self.offset_x = self.offset_x - fb.bb:getWidth() + 30
+		else -- should be ZOOM_FIT_TO_CONTENT_WIDTH
+			self.offset_y = self.offset_y - fb.bb:getHeight() + 30
+		end
+		-- min_offset_x and min_offset_y should be already set with 
+		-- self:setzoom after opening current page
+		self:_showCurrentView()
+	end
+end
+
+function PDFReader:prevView()
+	-- check to change with offset or trun page
+	if (self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT and 
+		self.offset_x >= 0) or 
+		(self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_WIDTH and
+		self.offset_y >= 0) then
+
+		self:setCurrentPage(self.pageno - 1)
+
+		-- we are changing page manually, so
+		-- set min_offset_x and min_offset_y
+		self.min_offset_x = fb.bb:getWidth() - self.fullwidth
+		self.min_offset_y = fb.bb:getHeight() - self.fullheight
+		if self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
+			self.offset_x = self.min_offset_x
+		else -- should be ZOOM_FIT_TO_CONTENT_WIDTH
+			self.offset_y = self.min_offset_y
+		end
+
+		self:_showCurrentView()
+	else 
+		-- change offset to display next part of the document
+		print(" ! from offset_x "..self.offset_x.." to "..(self.offset_x - fb.bb:getWidth()).."/"..self.min_offset_x)
+		print(" ! from offset_y "..self.offset_y.." to "..(self.offset_y - fb.bb:getHeight()).."/"..self.min_offset_y)
+		--local cur_screen_width = fb.bb:getWidth()
+		--local cur_screen_height = fb.bb:getHeight()
+		if self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
+			--@TODO check fb.bb:getWidth in landscape mode  28.02 2012
+			self.offset_x = self.offset_x + fb.bb:getWidth() - 30
+			--if self.offset_x > 0 then
+				--self.offset_x = 0
+			--end
+		else -- should be ZOOM_FIT_TO_CONTENT_WIDTH
+			self.offset_y = self.offset_y + fb.bb:getHeight() - 30
+			--if self.offset_y > 0 then
+				--self.offset_y = 0
+			--end
+		end
+		self:_showCurrentView()
 	end
 end
 
@@ -365,7 +492,7 @@ function PDFReader:inputloop()
 				elseif self.altmode then
 					self:setglobalzoom(self.globalzoom*1.1)
 				else
-					self:goto(self.pageno + 1)
+					self:nextView()
 				end
 			elseif ev.code == KEY_PGBCK or ev.code == KEY_LPGBCK then
 				if self.shiftmode then
@@ -373,7 +500,7 @@ function PDFReader:inputloop()
 				elseif self.altmode then
 					self:setglobalzoom(self.globalzoom*0.9)
 				else
-					self:goto(self.pageno - 1)
+					self:prevView()
 				end
 			elseif ev.code == KEY_BACK then
 				if self.altmode then
@@ -444,7 +571,7 @@ function PDFReader:inputloop()
 					y = self.shift_y
 				end
 
-				print("offset "..self.offset_x.."*"..self.offset_x.." shift "..x.."*"..y.." globalzoom="..self.globalzoom)
+				print("offset "..self.offset_x.."*"..self.offset_y.." shift "..x.."*"..y.." globalzoom="..self.globalzoom)
 				local old_offset_x = self.offset_x
 				local old_offset_y = self.offset_y
 
@@ -486,7 +613,6 @@ function PDFReader:inputloop()
 			local dur = (nsecs - secs) * 1000000 + nusecs - usecs
 			print("E: T="..ev.type.." V="..ev.value.." C="..ev.code.." DUR="..dur)
 		elseif ev.type == EV_KEY and ev.value == EVENT_VALUE_KEY_RELEASE and ev.code == KEY_SHIFT then
-			print "shift haha"
 			self.shiftmode = false
 		elseif ev.type == EV_KEY and ev.value == EVENT_VALUE_KEY_RELEASE and ev.code == KEY_ALT then
 			self.altmode = false
