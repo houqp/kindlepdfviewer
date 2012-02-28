@@ -31,6 +31,8 @@ PDFReader = {
 	-- size of current page for current zoom level in pixels
 	fullwidth = 0,
 	fullheight = 0,
+	margin_w = 5,
+	margin_h = 5,
 	offset_x = 0,
 	offset_y = 0,
 	min_offset_x = 0,
@@ -40,6 +42,7 @@ PDFReader = {
 	shift_x = 100,
 	shift_y = 50,
 	pan_by_page = false, -- using shift_[xy] or width/height
+	overlap = 30,
 
 	-- keep track of input state:
 	shiftmode = false, -- shift pressed
@@ -201,6 +204,7 @@ function PDFReader:setzoom(page)
 		self.offset_x = 0
 		self.offset_y = 0
 	end
+
 	dc:setZoom(self.globalzoom)
 	dc:setRotate(self.globalrotate);
 	dc:setOffset(self.offset_x, self.offset_y)
@@ -353,9 +357,9 @@ function PDFReader:nextView()
 		--local cur_screen_height = fb.bb:getHeight()
 		if self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
 			--@TODO check fb.bb:getWidth in landscape mode  28.02 2012
-			self.offset_x = self.offset_x - fb.bb:getWidth() + 30
+			self.offset_x = self.offset_x - fb.bb:getWidth() + self.overlap
 		else -- should be ZOOM_FIT_TO_CONTENT_WIDTH
-			self.offset_y = self.offset_y - fb.bb:getHeight() + 30
+			self.offset_y = self.offset_y - fb.bb:getHeight() + self.overlap
 		end
 		-- min_offset_x and min_offset_y should be already set with 
 		-- self:setzoom after opening current page
@@ -391,12 +395,12 @@ function PDFReader:prevView()
 		--local cur_screen_height = fb.bb:getHeight()
 		if self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
 			--@TODO check fb.bb:getWidth in landscape mode  28.02 2012
-			self.offset_x = self.offset_x + fb.bb:getWidth() - 30
+			self.offset_x = self.offset_x + fb.bb:getWidth() - self.overlap
 			--if self.offset_x > 0 then
 				--self.offset_x = 0
 			--end
 		else -- should be ZOOM_FIT_TO_CONTENT_WIDTH
-			self.offset_y = self.offset_y + fb.bb:getHeight() - 30
+			self.offset_y = self.offset_y + fb.bb:getHeight() - self.overlap
 			--if self.offset_y > 0 then
 				--self.offset_y = 0
 			--end
