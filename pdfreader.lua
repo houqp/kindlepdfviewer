@@ -96,7 +96,6 @@ function PDFReader:draworcache(no, zoom, offset_x, offset_y, width, height, gamm
 	local hash = self:cachehash(no, zoom, offset_x, offset_y, width, height, gamma, rotate)
 	if self.cache[hash] == nil then
 		-- not in cache, so prepare cache slot...
-		print(" @ caching "..hash)
 		self:cacheclaim(width * height / 2);
 		self.cache[hash] = {
 			ttl = self.cache_max_ttl,
@@ -160,13 +159,13 @@ function PDFReader:setzoom(page)
 	elseif self.globalzoommode == self.ZOOM_FIT_TO_PAGE_WIDTH
 	or self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_WIDTH then
 		-- ignore height
-		self.globalzoom = width / pwidth
+		self.globalzoom = (width - 2*self.margin_w) / pwidth
 		self.offset_x = 0
 		self.offset_y = (height - (self.globalzoom * pheight)) / 2
 	elseif self.globalzoommode == self.ZOOM_FIT_TO_PAGE_HEIGHT
 	or self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
 		-- ignore weight
-		self.globalzoom = height / pheight
+		self.globalzoom = (height - 2*self.margin_h) / pheight
 		self.offset_x = (width - (self.globalzoom * pwidth)) / 2
 		self.offset_y = 0
 	end
@@ -188,22 +187,26 @@ function PDFReader:setzoom(page)
 	elseif self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_WIDTH then
 		local x0, y0, x1, y1 = page:getUsedBBox()
 		if (x1 - x0) < pwidth then
-			self.globalzoom = width / (x1 - x0)
+			self.globalzoom = (width - 2*self.margin_w) / (x1 - x0)
 			--self.offset_x = -1 * x0 * self.globalzoom
 			--self.offset_y = -1 * y0 * self.globalzoom + (height - (self.globalzoom * (y1 - y0))) / 2
-			self.offset_x = 0
-			self.offset_y = 0
 		end
+		-- reset offset and add margin
+		self.offset_x = 0 + self.margin_w
+		self.offset_y = 0 + self.margin_h
 	elseif self.globalzoommode == self.ZOOM_FIT_TO_CONTENT_HEIGHT then
 		local x0, y0, x1, y1 = page:getUsedBBox()
+		self.globalzoom = (height - 2*self.margin_h) / (y1 - y0)
 		if (y1 - y0) < pheight then
-			self.globalzoom = height / (y1 - y0)
 			--self.offset_x = -1 * x0 * self.globalzoom + (width - (self.globalzoom * (x1 - x0))) / 2
 			--self.offset_y = -1 * y0 * self.globalzoom
 		end
-		self.offset_x = 0
-		self.offset_y = 0
+		-- reset offset and add margin
+		self.offset_x = 0 + self.margin_w
+		self.offset_y = 0 + self.margin_h
 	end
+
+	self.offset_y = self.offset_y + self.margin_h
 
 	dc:setZoom(self.globalzoom)
 	dc:setRotate(self.globalrotate);
@@ -264,7 +267,6 @@ function PDFReader:_showCurrentView()
 								width, height, self.globalgamma, self.globalrotate)
 	if self.cache[hash] == nil then
 		-- not in cache, so prepare cache slot...
-		print(" @ caching "..hash)
 		self:cacheclaim(width * height / 2);
 		self.cache[hash] = {
 			ttl = self.cache_max_ttl,
