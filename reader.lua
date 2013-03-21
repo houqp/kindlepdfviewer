@@ -10,25 +10,6 @@ require "settings"
 require "dbg"
 
 
-HomeMenu = InputContainer:new{
-	item_table = {},
-	key_events = {
-		TapShowMenu = { {"Home"}, doc = "Show Home Menu"},
-	},
-	ges_events = {
-		TapShowMenu = {
-			GestureRange:new{
-				ges = "tap",
-				range = Geom:new{
-					x = 0, y = 0,
-					w = Screen:getWidth(),
-					h = 25,
-				}
-			}
-		},
-	},
-}
-
 function exitReader()
 	G_reader_settings:close()
 
@@ -44,14 +25,35 @@ function exitReader()
 			local dev = Device:getTouchInputDev()
 			if dev then
 				local width, height = Screen:getWidth(), Screen:getHeight()
-				input.fakeTapInput(dev, 
+				input.fakeTapInput(dev,
 					math.min(width, height)/2,
 					math.max(width, height)-30
 				)
 			end
 		end
 	end
+
+	os.exit(0)
 end
+
+HomeMenu = InputContainer:new{
+	item_table = {},
+	key_events = {
+		ExitReader = { {"Home"}, doc = "Show Home Menu"},
+	},
+	ges_events = {
+		TapShowMenu = {
+			GestureRange:new{
+				ges = "tap",
+				range = Geom:new{
+					x = 0, y = 0,
+					w = Screen:getWidth(),
+					h = 25,
+				}
+			}
+		},
+	},
+}
 
 function HomeMenu:setUpdateItemTable()
 	function readHistDir(order_arg, re)
@@ -115,6 +117,10 @@ function HomeMenu:onTapShowMenu()
 	return true
 end
 
+function HomeMenu:onExitReader()
+	exitReader()
+	return true
+end
 
 function showReader(file, pass)
 	local document = DocumentRegistry:openDocument(file)
